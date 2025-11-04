@@ -30,5 +30,3 @@ Open-source browser tool to turn Trade Republic account statements (PDF) into st
 - Provide language-specific parser overrides.
 - Offer optional integrations via plug-ins instead of hard-coded adapters.
 
-## License
-Choose a license (MIT, Apache-2.0, etc.) before publishing. Replace this section with the final license notice.
