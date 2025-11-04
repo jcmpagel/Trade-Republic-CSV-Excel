@@ -1,0 +1,34 @@
+:root {
+  color-scheme: light;
+}
+
+body {
+  min-height: 100vh;
+}
+
+#debug {
+  display: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  white-space: pre-wrap;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.sanity-check-failed {
+  background-color: #fee2e2 !important;
+}
+
+.sanity-check-failed:hover {
+  background-color: #fecaca !important;
+}
+
+stripe-buy-button {
+  display: block;
+  width: 100%;
+}
+
+section[id],
+#results-summary,
+#upload-zone {
+  scroll-margin-top: 128px;
+}
