@@ -19,8 +19,12 @@ function csvDL(rows, name) {
     csv +=
       cols
         .map((k) => {
-          const v = r[k] || '';
-          return v.includes(';') ? `"${v}"` : v;
+          const raw = r[k];
+          const s = raw == null ? '' : String(raw);
+          const escaped = s.replace(/"/g, '""');
+          const needsQuotes = /[;\n\r"]/.test(escaped);
+
+          return needsQuotes ? `"${escaped}"` : escaped;
         })
         .join(';') + '\n';
   });
