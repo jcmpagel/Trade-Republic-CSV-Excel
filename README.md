@@ -14,7 +14,7 @@ Open-source browser tool that converts Trade Republic account statements (PDF) i
 ## Getting Started
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-account/Trade-Republic-CSV-Excel.git
+   git clone https://github.com/jcmpagel/Trade-Republic-CSV-Excel.git
    cd Trade-Republic-CSV-Excel
    ```
 2. Serve the project locally (any static file server works). For example:
