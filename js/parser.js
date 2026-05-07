@@ -42,6 +42,7 @@ async function parsePDF(pdf, options = {}) {
   let isParsingInterest = false;
   let isParsingPortfolio = false;
   let isParsingCrypto = false;
+  let isFrench = false;
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     console.log(`--- Processing Page ${pageNum} ---`);
@@ -66,22 +67,38 @@ async function parsePDF(pdf, options = {}) {
     const footerY = footerBandPx;
     let items = pageItems.filter(it => it.y > footerY);
 
-    // --- Section markers (unchanged) ---
+    // --- French detection (persists across pages once set) ---
+    if (!isFrench) {
+      isFrench = items.some(it => {
+        const t = it.text.trim();
+        return t === 'SYNTHÈSE DU RELEVÉ DE COMPTE' ||
+               t === 'APERÇU DU SOLDE' ||
+               t === 'REMARQUES SUR LE RELEVÉ DE COMPTE' ||
+               t === "ENTRÉE D'ARGENT" || t === 'ENTRÉE D’ARGENT';
+      });
+      if (isFrench) console.log('Detected French statement');
+    }
+
+    // --- Section markers ---
     const cashStartMarker = items.find(item => {
       const t = item.text.trim();
-      return t === 'UMSATZÜBERSICHT' || t === 'TRANSAZIONI SUL CONTO' || t === 'ACCOUNT TRANSACTIONS';
+      return t === 'UMSATZÜBERSICHT' || t === 'TRANSAZIONI SUL CONTO' || t === 'ACCOUNT TRANSACTIONS' ||
+             (isFrench && t === 'TRANSACTIONS');
     });
 
     const cashEndMarker = items.find(item => {
       const t = item.text.trim();
-      return t.includes('BARMITTELÜBERSICHT') || t.includes('CASH SUMMARY') || t.includes('BALANCE OVERVIEW');
+      return t.includes('BARMITTELÜBERSICHT') || t.includes('CASH SUMMARY') || t.includes('BALANCE OVERVIEW') ||
+             (isFrench && (t.includes('APERÇU DU SOLDE') || t.includes('REMARQUES SUR LE RELEVÉ')));
     });
 
     const shouldProcessCash = isParsingCash || !!cashStartMarker;
 
     const interestStartMarker = items.find(item => {
       const t = item.text.trim();
-      return t === 'TRANSAKTIONSÜBERSICHT' || t === 'TRANSACTION OVERVIEW' || t === 'TRANSACTIONS';
+      // In French statements, "TRANSACTIONS" is the cash section, not interest.
+      return t === 'TRANSAKTIONSÜBERSICHT' || t === 'TRANSACTION OVERVIEW' ||
+             (!isFrench && t === 'TRANSACTIONS');
     });
 
     const interestEndMarker = items.find(item => {
@@ -275,7 +292,9 @@ function findCashHeaders(items) {
     // Italian equivalents
     'DATA', 'TIPO', 'DESCRIZIONE', 'IN ENTRATA', 'IN USCITA',
     // English equivalents
-    'DATE', 'TYPE', 'DESCRIPTION', 'MONEY', 'IN', 'OUT', 'BALANCE'
+    'DATE', 'TYPE', 'DESCRIPTION', 'MONEY', 'IN', 'OUT', 'BALANCE',
+    // French equivalents (DATE/TYPE/DESCRIPTION already covered above)
+    'ENTRÉE', 'SORTIE', "D'ARGENT", 'D’ARGENT', 'SOLDE'
   ];
   const potentialHeaders = items.filter(item =>
     item.text.trim().length > 2 &&
@@ -287,6 +306,37 @@ function findCashHeaders(items) {
 
   const matchAny = (labels) => potentialHeaders.find(p => labels.includes(p.text.trim())) || null;
   
+  // Helper to find vertically-stacked French headers like "ENTRÉE" above "D'ARGENT"
+  // (different lines, similar x). pdf.js y: larger = higher on page, so the bottom
+  // word has a lower y than the top word.
+  // Picks the bottom candidate with the smallest |x - top.x| so we pair correctly
+  // when multiple identical bottom words exist (e.g., "D'ARGENT" under both ENTRÉE
+  // and SORTIE).
+  const findStackedHeader = (top, bottoms) => {
+    const bottomList = Array.isArray(bottoms) ? bottoms : [bottoms];
+    const tops = potentialHeaders.filter(p => p.text.trim() === top);
+    for (const t of tops) {
+      const candidates = potentialHeaders.filter(p => {
+        const txt = p.text.trim();
+        return bottomList.includes(txt) &&
+               p.y < t.y &&
+               (t.y - p.y) < 30 &&
+               Math.abs(p.x - t.x) < 60;
+      });
+      if (candidates.length === 0) continue;
+      candidates.sort((a, b) => Math.abs(a.x - t.x) - Math.abs(b.x - t.x));
+      const below = candidates[0];
+      return {
+        text: `${top} ${below.text.trim()}`,
+        x: t.x,
+        y: t.y,
+        width: Math.max(t.width || 0, below.width || 0),
+        height: (t.y - below.y) + (below.height || 0),
+      };
+    }
+    return null;
+  };
+
   // Helper to find headers that might be split into multiple text items (like "MONEY IN")
   const findCompositeHeader = (keyword1, keyword2) => {
     const single = potentialHeaders.find(p => {
@@ -326,12 +376,16 @@ function findCashHeaders(items) {
     }) || null,
     ZAHLUNGSEINGANG: null,
     ZAHLUNGSAUSGANG: null,
-    SALDO: matchAny(['SALDO', 'BALANCE']),
+    SALDO: matchAny(['SALDO', 'BALANCE', 'SOLDE']),
   };
 
   if (!headers.ZAHLUNGEN) {
-    headers.ZAHLUNGSEINGANG = matchAny(['ZAHLUNGSEINGANG', 'IN ENTRATA']) || findCompositeHeader('MONEY', 'IN');
-    headers.ZAHLUNGSAUSGANG = matchAny(['ZAHLUNGSAUSGANG', 'IN USCITA']) || findCompositeHeader('MONEY', 'OUT');
+    headers.ZAHLUNGSEINGANG = matchAny(['ZAHLUNGSEINGANG', 'IN ENTRATA'])
+      || findCompositeHeader('MONEY', 'IN')
+      || findStackedHeader('ENTRÉE', ["D'ARGENT", 'D’ARGENT']);
+    headers.ZAHLUNGSAUSGANG = matchAny(['ZAHLUNGSAUSGANG', 'IN USCITA'])
+      || findCompositeHeader('MONEY', 'OUT')
+      || findStackedHeader('SORTIE', ["D'ARGENT", 'D’ARGENT']);
   }
   
   console.log('Matched headers:', {
