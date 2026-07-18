@@ -337,6 +337,7 @@ function buttonBar(rows, name) {
   };
   
   mkBtn('CSV', () => csvDL(rows, name));
+  mkBtn('CSV (Notion)', () => notionCsvDL(rows, name));
   mkBtn('Excel', () => xlsxDL(rows, name));
   mkBtn('JSON', () => jsonDL(rows, name));
   return bar;
